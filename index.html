@@ -196,9 +196,14 @@
           <select id="mes"></select>
         </div>
         <div class="field">
-          <label for="diaMudanza">Día de mudanza</label>
-          <input type="number" id="diaMudanza" value="15" min="1" max="31">
+          <label for="anio">Año</label>
+          <select id="anio"></select>
         </div>
+      </div>
+
+      <div class="field">
+        <label for="diaMudanza">Día de mudanza</label>
+        <input type="number" id="diaMudanza" value="15" min="1" max="31">
       </div>
 
       <div class="row2">
@@ -224,7 +229,7 @@
       <div class="field">
         <label for="reserva">Monto de reserva pagado por el interesado (CLP)</label>
         <input type="number" id="reserva" value="0" step="1000" min="0">
-        <p class="hint">Por defecto se sugiere el valor de la comisión de corretaje. Este monto se descuenta del pago en la entrega.</p>
+        <p class="hint">Por defecto se sugiere la comisión de corretaje más la firma digital. Este monto se descuenta del pago en la entrega.</p>
       </div>
     </div>
 
@@ -233,14 +238,14 @@
       <ul class="ledger" id="ledger"></ul>
 
       <div class="reserve-box">
-        <div class="k">Sugerido a cobrar como reserva (= comisión de corretaje)</div>
+        <div class="k">Sugerido a cobrar como reserva (= comisión de corretaje + firma digital)</div>
         <div class="v" id="reservaSugerida">$0</div>
       </div>
     </div>
   </div>
 
   <footer class="note">
-    Prorrateo calculado desde el día de mudanza (inclusive) hasta el fin de mes. Comisión de corretaje = 50% del valor de arriendo + IVA (19%). La reserva ingresada arriba se descuenta del total a pagar en la entrega.
+    Prorrateo calculado desde el día de mudanza (inclusive) hasta el fin de mes. Comisión de corretaje = 50% del valor de arriendo + IVA (19%). La reserva incluye la comisión de corretaje y la firma digital, y se descuenta del total a pagar en la entrega.
   </footer>
 </div>
 
@@ -248,19 +253,30 @@
 const CLP = new Intl.NumberFormat('es-CL', {style:'currency', currency:'CLP', maximumFractionDigits:0});
 const fmt = n => CLP.format(Math.round(n));
 
-const meses = [
-  ['Enero',31,['Enero',2026]],['Febrero',28],['Marzo',31],['Abril',30],
-  ['Mayo',31],['Junio',30],['Julio',31],['Agosto',31],
-  ['Septiembre',30],['Octubre',31],['Noviembre',30],['Diciembre',31]
-];
+const meses = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+const hoy = new Date();
 const mesSelect = document.getElementById('mes');
-meses.forEach((m,i)=>{
+meses.forEach((nombre,i)=>{
   const opt = document.createElement('option');
-  opt.value = m[1];
-  opt.textContent = m[0];
-  if(i===3) opt.selected = true; // Abril por defecto (30 días)
+  opt.value = i;
+  opt.textContent = nombre;
   mesSelect.appendChild(opt);
 });
+mesSelect.value = hoy.getMonth(); // mes actual por defecto
+
+const anioSelect = document.getElementById('anio');
+for(let a = hoy.getFullYear(); a <= hoy.getFullYear() + 2; a++){
+  const opt = document.createElement('option');
+  opt.value = a;
+  opt.textContent = a;
+  anioSelect.appendChild(opt);
+}
+anioSelect.value = hoy.getFullYear();
+
+// Días reales del mes elegido (febrero 28 o 29 según el año)
+function diasDelMes(){
+  return new Date(parseInt(anioSelect.value), parseInt(mesSelect.value) + 1, 0).getDate();
+}
 
 const garantiaSelect = document.getElementById('garantiaMeses');
 const cuotasSelect = document.getElementById('cuotasGarantia');
@@ -281,7 +297,8 @@ function actualizarCuotasDisponibles(){
 
 function calcular(){
   const valorArriendo = parseFloat(document.getElementById('valorArriendo').value) || 0;
-  const diasMes = parseInt(mesSelect.value) || 30;
+  const diasMes = diasDelMes();
+  document.getElementById('diaMudanza').max = diasMes;
   const diaMudanza = Math.min(Math.max(parseInt(document.getElementById('diaMudanza').value) || 1, 1), diasMes);
   const garantiaMeses = parseFloat(garantiaSelect.value);
   const cuotas = parseInt(cuotasSelect.value) || 1;
@@ -298,11 +315,12 @@ function calcular(){
   const iva = comisionNeta * 0.19;
   const comisionTotal = comisionNeta + iva;
 
-  // sugerir reserva = comisión total, si el usuario no la ha tocado manualmente
+  // sugerir reserva = comisión total + firma digital, si el usuario no la ha tocado manualmente
+  const reservaSugerida = comisionTotal + firmaDigital;
   const reservaInput = document.getElementById('reserva');
-  document.getElementById('reservaSugerida').textContent = fmt(comisionTotal);
+  document.getElementById('reservaSugerida').textContent = fmt(reservaSugerida);
   if(!reservaInput.dataset.touched){
-    reservaInput.value = Math.round(comisionTotal);
+    reservaInput.value = Math.round(reservaSugerida);
   }
   const reserva = parseFloat(reservaInput.value) || 0;
 
@@ -332,7 +350,7 @@ function calcular(){
 
   const minusLi = document.createElement('li');
   minusLi.className = 'minus';
-  minusLi.innerHTML = `<span class="k">(–) Reserva ya pagada</span><span class="v">– ${fmt(reserva)}</span>`;
+  minusLi.innerHTML = `<span class="k">(–) Reserva ya pagada<span class="sub">Incluye comisión de corretaje y firma digital</span></span><span class="v">– ${fmt(reserva)}</span>`;
   ledger.appendChild(minusLi);
 
   const totalLi = document.createElement('li');
@@ -356,6 +374,7 @@ document.getElementById('reserva').addEventListener('input', function(){
   document.getElementById(id).addEventListener('input', calcular);
 });
 mesSelect.addEventListener('change', calcular);
+anioSelect.addEventListener('change', calcular);
 garantiaSelect.addEventListener('change', ()=>{ actualizarCuotasDisponibles(); calcular(); });
 cuotasSelect.addEventListener('change', calcular);
 
